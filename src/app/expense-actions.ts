@@ -42,7 +42,7 @@ export async function addExpense(input: ExpenseInput): Promise<{ error?: string 
   await prisma.expense.create({
     data: { userId, categoryId: categoryId!, amountMinor, currency: input.currency, date: input.date },
   });
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   revalidatePath("/calendar");
   return {};
 }
@@ -50,6 +50,6 @@ export async function addExpense(input: ExpenseInput): Promise<{ error?: string 
 export async function deleteExpense(id: string) {
   const userId = await requireUserId();
   await prisma.expense.deleteMany({ where: { id, userId } });
-  revalidatePath("/");
+  revalidatePath("/dashboard");
   revalidatePath("/calendar");
 }
