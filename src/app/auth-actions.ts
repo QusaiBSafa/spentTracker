@@ -36,7 +36,7 @@ export async function register(_: AuthState, form: FormData): Promise<AuthState>
     },
   });
   await startSession(user.id);
-  redirect("/");
+  redirect("/dashboard");
 }
 
 export async function login(_: AuthState, form: FormData): Promise<AuthState> {
@@ -46,11 +46,11 @@ export async function login(_: AuthState, form: FormData): Promise<AuthState> {
     return { error: "Wrong email or password.", email };
   }
   await startSession(user.id);
-  redirect("/");
+  redirect("/dashboard");
 }
 
 export async function logout() {
   const store = await cookies();
   store.delete(SESSION_COOKIE);
-  redirect("/login");
+  redirect("/");
 }

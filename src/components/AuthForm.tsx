@@ -17,7 +17,10 @@ export default function AuthForm({ title, submitLabel, action, switchText, switc
   const [state, formAction, pending] = useActionState(action, {});
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-4">
+    <main className="min-h-screen flex flex-col items-center justify-center gap-6 p-4">
+      <Link href="/" className="text-lg font-semibold">
+        💸 SpentTracker
+      </Link>
       <form action={formAction} className="w-full max-w-sm bg-white rounded-2xl shadow p-6 space-y-4">
         <h1 className="text-2xl font-semibold">{title}</h1>
         <label className="block">
