@@ -1,4 +1,5 @@
 import Link from "next/link";
+import QrToPhone from "@/components/QrToPhone";
 import Reveal from "@/components/Reveal";
 
 const FEATURES = [
@@ -107,6 +108,9 @@ export default function LandingPage() {
               >
                 I have an account
               </Link>
+            </div>
+            <div className="animate-fade-up mt-8 hidden md:block" style={{ animationDelay: "480ms" }}>
+              <QrToPhone />
             </div>
           </div>
 
