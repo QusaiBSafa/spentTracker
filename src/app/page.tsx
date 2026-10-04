@@ -1,103 +1,98 @@
-import Image from "next/image";
+import Nav from "@/components/Nav";
+import { requireUserId } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { addMonths, currentMonth, monthLabel } from "@/lib/dates";
+import { CURRENCIES, emptyTotals, formatMoney, type Currency, type Totals } from "@/lib/money";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+type Row = { name: string; totals: Totals };
+
+async function monthSummary(userId: string, month: string) {
+  const groups = await prisma.expense.groupBy({
+    by: ["categoryId", "currency"],
+    where: { userId, date: { startsWith: `${month}-` } },
+    _sum: { amountMinor: true },
+  });
+  const categories = await prisma.category.findMany({
+    where: { id: { in: [...new Set(groups.map((g) => g.categoryId))] } },
+  });
+  const nameById = new Map(categories.map((c) => [c.id, c.name]));
+
+  const rows = new Map<string, Row>();
+  const total = emptyTotals();
+  for (const g of groups) {
+    const row = rows.get(g.categoryId) ?? { name: nameById.get(g.categoryId) ?? "?", totals: emptyTotals() };
+    const sum = g._sum.amountMinor ?? 0;
+    row.totals[g.currency as Currency] += sum;
+    total[g.currency as Currency] += sum;
+    rows.set(g.categoryId, row);
+  }
+  const sorted = [...rows.values()].sort((a, b) => b.totals.ILS + b.totals.USD - (a.totals.ILS + a.totals.USD));
+  return { rows: sorted, total };
+}
+
+function MonthCard({ title, month, rows, total }: { title: string; month: string } & Awaited<ReturnType<typeof monthSummary>>) {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <section className="bg-white rounded-2xl shadow-sm border p-5">
+      <div className="flex items-baseline justify-between mb-4">
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <span className="text-sm text-gray-500">{monthLabel(month)}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        {CURRENCIES.map((c) => (
+          <div key={c} className="rounded-xl bg-emerald-50 p-3">
+            <div className="text-xs text-emerald-800">Total {c}</div>
+            <div className="text-xl font-semibold text-emerald-900">{formatMoney(total[c], c)}</div>
+          </div>
+        ))}
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-sm text-gray-500">No spending recorded.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-gray-500 border-b">
+              <th className="py-2 font-medium">Category</th>
+              {CURRENCIES.map((c) => (
+                <th key={c} className="py-2 font-medium text-right">{c}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.name} className="border-b last:border-0">
+                <td className="py-2">{r.name}</td>
+                {CURRENCIES.map((c) => (
+                  <td key={c} className="py-2 text-right tabular-nums">
+                    {r.totals[c] ? formatMoney(r.totals[c], c) : "—"}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
+export default async function DashboardPage() {
+  const userId = await requireUserId();
+  const thisMonth = currentMonth();
+  const prevMonth = addMonths(thisMonth, -1);
+  const [current, previous] = await Promise.all([
+    monthSummary(userId, thisMonth),
+    monthSummary(userId, prevMonth),
+  ]);
+
+  return (
+    <>
+      <Nav active="dashboard" />
+      <main className="max-w-5xl mx-auto p-4 grid gap-4 md:grid-cols-2">
+        <MonthCard title="This month" month={thisMonth} {...current} />
+        <MonthCard title="Previous month" month={prevMonth} {...previous} />
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+    </>
   );
 }
