@@ -18,6 +18,7 @@ model User {
   createdAt    DateTime   @default(now())
   categories   Category[]
   expenses     Expense[]
+  targets      MonthlyTarget[]
 }
 
 model Category {
@@ -44,4 +45,16 @@ model Expense {
   createdAt   DateTime @default(now())
 
   @@index([userId, date])
+}
+
+// Spending target for one month, always in ILS.
+model MonthlyTarget {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  month       String // "YYYY-MM"
+  amountMinor Int
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, month])
 }

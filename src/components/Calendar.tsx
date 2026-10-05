@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { addMonths, daysInMonth, firstWeekday, monthLabel, todayStr } from "@/lib/dates";
-import { emptyTotals, formatTotals, type Currency } from "@/lib/money";
+import { computeBudget } from "@/lib/budget";
+import { emptyTotals, formatMoney, formatTotals, type Currency } from "@/lib/money";
 import AddExpenseModal, { type CategoryOption } from "./AddExpenseModal";
 import DayDetails from "./DayDetails";
 
@@ -15,10 +16,12 @@ export default function Calendar({
   month,
   categories,
   expenses,
+  targetMinor,
 }: {
   month: string;
   categories: CategoryOption[];
   expenses: ExpenseItem[];
+  targetMinor: number | null; // monthly ILS target, if set
 }) {
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
@@ -27,6 +30,8 @@ export default function Calendar({
   for (const e of expenses) byDay.set(e.date, [...(byDay.get(e.date) ?? []), e]);
 
   const today = todayStr();
+  const spentIls = expenses.reduce((sum, e) => sum + (e.currency === "ILS" ? e.amountMinor : 0), 0);
+  const budget = targetMinor !== null ? computeBudget(month, today, targetMinor, spentIls) : null;
   const blanks = firstWeekday(month);
   const days = Array.from({ length: daysInMonth(month) }, (_, i) => `${month}-${String(i + 1).padStart(2, "0")}`);
 
@@ -42,6 +47,36 @@ export default function Calendar({
         </Link>
       </div>
 
+      {targetMinor === null && month === today.slice(0, 7) && (
+        <p className="mb-4 text-sm text-gray-500">
+          Set a monthly target on the{" "}
+          <Link href="/dashboard" className="font-medium text-emerald-700 hover:underline">
+            Dashboard
+          </Link>{" "}
+          to see how much you can spend each day.
+        </p>
+      )}
+      {budget && (
+        <div
+          className={`mb-4 rounded-xl px-4 py-3 text-sm ${
+            budget.remainingMinor < 0 ? "bg-red-50 text-red-800" : "bg-emerald-50 text-emerald-900"
+          }`}
+        >
+          {budget.remainingMinor < 0 ? (
+            <>
+              You&apos;re <strong>{formatMoney(-budget.remainingMinor, "ILS")}</strong> over your{" "}
+              {formatMoney(budget.targetMinor, "ILS")} target for this month.
+            </>
+          ) : (
+            <>
+              You can spend up to <strong>{formatMoney(budget.perDayMinor, "ILS")} a day</strong> for the next{" "}
+              {budget.daysLeft} {budget.daysLeft === 1 ? "day" : "days"} ({formatMoney(budget.remainingMinor, "ILS")} left
+              of your {formatMoney(budget.targetMinor, "ILS")} target).
+            </>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-gray-500 mb-1">
         {WEEKDAYS.map((d) => (
           <div key={d}>{d}</div>
@@ -55,6 +90,9 @@ export default function Calendar({
           const items = byDay.get(day) ?? [];
           const totals = emptyTotals();
           for (const e of items) totals[e.currency as Currency] += e.amountMinor;
+          const dayNum = Number(day.slice(8));
+          const showLimit = budget !== null && dayNum >= budget.firstDay;
+          const overLimit = showLimit && day === today && totals.ILS > budget.perDayMinor;
           return (
             <div
               key={day}
@@ -73,6 +111,17 @@ export default function Calendar({
                   +
                 </button>
               </div>
+              {showLimit && (
+                <span
+                  className={`mt-1 self-start rounded-md px-1.5 py-0.5 text-[10px] sm:text-[11px] font-medium tabular-nums ${
+                    overLimit ? "bg-red-100 text-red-700" : "bg-emerald-50 text-emerald-700"
+                  }`}
+                  title="Most you can spend this day to stay within your monthly target"
+                >
+                  <span className="hidden sm:inline">Up to </span>
+                  {formatMoney(budget.perDayMinor, "ILS")}
+                </span>
+              )}
               {items.length > 0 && (
                 <button
                   onClick={() => setViewing(day)}
