@@ -1,8 +1,10 @@
 import Nav from "@/components/Nav";
 import DashboardCharts, { type CategoryRow } from "@/components/DashboardCharts";
+import TargetCard from "@/components/TargetCard";
 import { requireUserId } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { addMonths, currentMonth, daysInMonth, monthLabel } from "@/lib/dates";
+import { computeBudget } from "@/lib/budget";
+import { addMonths, currentMonth, daysInMonth, monthLabel, todayStr } from "@/lib/dates";
 import { CURRENCIES, emptyTotals, formatMoney, type Currency, type Totals } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
@@ -81,7 +83,12 @@ export default async function DashboardPage() {
   const userId = await requireUserId();
   const thisMonth = currentMonth();
   const prevMonth = addMonths(thisMonth, -1);
-  const [current, previous] = await Promise.all([monthData(userId, thisMonth), monthData(userId, prevMonth)]);
+  const [current, previous, target] = await Promise.all([
+    monthData(userId, thisMonth),
+    monthData(userId, prevMonth),
+    prisma.monthlyTarget.findUnique({ where: { userId_month: { userId, month: thisMonth } } }),
+  ]);
+  const budget = target ? computeBudget(thisMonth, todayStr(), target.amountMinor, current.total.ILS) : null;
 
   const names = new Set([...current.rows, ...previous.rows].map((r) => r.name));
   const categories: CategoryRow[] = [...names].map((name) => ({
@@ -94,6 +101,13 @@ export default async function DashboardPage() {
     <>
       <Nav active="dashboard" />
       <main className="max-w-5xl mx-auto p-4 space-y-4">
+        <TargetCard
+          key={target?.amountMinor ?? "none"}
+          month={thisMonth}
+          monthLabel={monthLabel(thisMonth)}
+          budget={budget}
+          hasUsd={current.total.USD > 0}
+        />
         <DashboardCharts
           currentLabel={monthLabel(thisMonth)}
           previousLabel={monthLabel(prevMonth)}
